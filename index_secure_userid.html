@@ -1,0 +1,131 @@
+
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <title>Ямы Риги 🍒 — персональные вишни</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.3/dist/leaflet.css" />
+  <link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;600&display=swap" rel="stylesheet">
+  <style>
+    html, body, #map { height: 100%; margin: 0; font-family: 'Rubik', sans-serif; }
+    #controls {
+      position: absolute;
+      top: 15px;
+      left: 15px;
+      background: rgba(255, 255, 255, 0.95);
+      padding: 15px;
+      border-radius: 12px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+      z-index: 1000;
+      max-width: 280px;
+    }
+    #controls h1 { margin: 0 0 10px; font-size: 18px; color: #d11e4f; }
+    #counter { font-weight: 600; margin-bottom: 10px; font-size: 16px; }
+    button {
+      display: block; width: 100%; margin-top: 8px; padding: 10px;
+      background: #d11e4f; color: white; font-weight: 600;
+      border: none; border-radius: 6px; cursor: pointer; font-size: 14px;
+    }
+    button:hover { background: #a8133a; }
+  </style>
+</head>
+<body>
+  <div id="controls">
+    <h1>Ямы Риги 🍒</h1>
+    <div id="counter">Загружается...</div>
+    <button id="share">Поделиться картой</button>
+    <button id="export">Скачать отчёт (CSV)</button>
+  </div>
+  <div id="map"></div>
+
+  <script src="https://unpkg.com/leaflet@1.9.3/dist/leaflet.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
+
+  <script>
+    const firebaseConfig = {
+      apiKey: "AIzaSyDrHy10idobkL5My6UJqLUZMv34946Sx0c",
+      authDomain: "rigakirsi.firebaseapp.com",
+      databaseURL: "https://rigakirsi-default-rtdb.europe-west1.firebasedatabase.app",
+      projectId: "rigakirsi",
+      storageBucket: "rigakirsi.firebasestorage.app",
+      messagingSenderId: "874490900592",
+      appId: "1:874490900592:web:8e6f6c713d3902396984b5"
+    };
+
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+
+    const map = L.map('map').setView([56.9496, 24.1052], 13);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19
+    }).addTo(map);
+
+    const cherryIcon = L.divIcon({ html: '🍒', className: '', iconSize: [24, 24] });
+    const markers = {};
+    let allData = {};
+
+    let userId = localStorage.getItem("cherryUserId");
+    if (!userId) {
+      userId = "user_" + Math.random().toString(36).substr(2, 9);
+      localStorage.setItem("cherryUserId", userId);
+    }
+
+    function updateCounter() {
+      document.getElementById('counter').innerText = "Ям отмечено: " + Object.keys(allData).length;
+    }
+
+    db.ref("cherries").on("value", (snapshot) => {
+      allData = snapshot.val() || {};
+      updateCounter();
+
+      Object.keys(markers).forEach(key => map.removeLayer(markers[key]));
+      Object.keys(allData).forEach((key) => {
+        const { lat, lng, comment, user } = allData[key];
+        const marker = L.marker([lat, lng], { icon: cherryIcon }).addTo(map);
+
+        let popupContent = `<b>Комментарий:</b><br>${comment || "—"}`;
+        if (user === userId) {
+          popupContent += `<br><button onclick="deleteCherry('${key}')">Удалить</button>`;
+        }
+
+        marker.bindPopup(popupContent);
+        markers[key] = marker;
+      });
+    });
+
+    function deleteCherry(key) {
+      if (confirm("Вы действительно хотите удалить свою вишенку?")) {
+        db.ref("cherries/" + key).remove();
+      }
+    }
+
+    map.on("click", function(e) {
+      const comment = prompt("Оставьте комментарий к яме:");
+      if (comment !== null) {
+        const newRef = db.ref("cherries").push();
+        newRef.set({ lat: e.latlng.lat, lng: e.latlng.lng, comment: comment, user: userId });
+      }
+    });
+
+    document.getElementById("share").onclick = () => {
+      const url = window.location.href;
+      navigator.clipboard.writeText(url);
+      alert("Ссылка на карту скопирована!");
+    };
+
+    document.getElementById("export").onclick = () => {
+      let csv = "lat,lng,comment\n";
+      Object.values(allData).forEach(({lat, lng, comment}) => {
+        csv += `${lat},${lng},"${comment || ""}"\n`;
+      });
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+      const link = document.createElement("a");
+      link.href = URL.createObjectURL(blob);
+      link.download = "riga_yamy_export.csv";
+      link.click();
+    };
+  </script>
+</body>
+</html>
